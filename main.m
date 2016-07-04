@@ -1,6 +1,65 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <Cocoa/Cocoa.h>
+
+#define M80NotificationPrefix   (@"m80_wechat_revoke")
+
+@interface M80NotificationManager : NSObject<NSUserNotificationCenterDelegate>
+@property (nonatomic,assign)  id<NSUserNotificationCenterDelegate> delegate;
+@end
+
+@implementation M80NotificationManager
++ (instancetype)sharedManager
+{
+    static M80NotificationManager *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[M80NotificationManager alloc] init];
+    });
+    return instance;
+}
+
+- (instancetype)init
+{
+    if (self = [super init])
+    {
+    }
+    return self;
+}
+
+
+- (BOOL)userNotificationCenter:(NSUserNotificationCenter *)center shouldPresentNotification:(NSUserNotification *)notification
+{
+    if ([notification.identifier hasPrefix:M80NotificationPrefix])
+    {
+        return YES;
+    }
+    if (_delegate && [_delegate respondsToSelector:@selector(userNotificationCenter:shouldPresentNotification:)]) {
+        
+        return [_delegate userNotificationCenter:center
+                       shouldPresentNotification:notification];
+    }
+    return YES;
+}
+
+- (void)userNotificationCenter:(NSUserNotificationCenter *)center didDeliverNotification:(NSUserNotification *)notification
+{
+    if (_delegate && [_delegate respondsToSelector:@selector(userNotificationCenter:didDeliverNotification:)]) {
+        [_delegate userNotificationCenter:center
+                   didDeliverNotification:notification];
+    }
+}
+
+- (void)userNotificationCenter:(NSUserNotificationCenter *)center didActivateNotification:(nonnull NSUserNotification *)notification
+{
+    if (_delegate && [_delegate respondsToSelector:@selector(userNotificationCenter:didActivateNotification:)]) {
+        [_delegate userNotificationCenter:center
+                  didActivateNotification:notification];
+    }
+}
+
+@end
 
 static void injection() {
     
@@ -40,9 +99,16 @@ static void injection() {
                     NSUserNotification *userNotification = [[NSUserNotification alloc] init];
                     userNotification.title = @"撤回通知";
                     userNotification.informativeText = [NSString stringWithFormat:@"群 %@ 中有人撤回了一条消息，快去看看吧",groupName];
-                    userNotification.identifier = [[NSUUID UUID] UUIDString];
+                    userNotification.identifier = [NSString stringWithFormat:@"%@_%@",M80NotificationPrefix,[[NSUUID UUID] UUIDString]];
                     
-                    [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:userNotification];
+                    NSUserNotificationCenter *center = [NSUserNotificationCenter defaultUserNotificationCenter];
+                    
+                    if (center.delegate != [M80NotificationManager sharedManager])
+                    {
+                        [M80NotificationManager sharedManager].delegate = center.delegate;
+                        center.delegate = [M80NotificationManager sharedManager];
+                    }
+                    [center deliverNotification:userNotification];
                 });
             }
             
